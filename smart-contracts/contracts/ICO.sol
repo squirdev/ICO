@@ -3,6 +3,7 @@ pragma solidity 0.8.16;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+
 contract StknICO {
     //Administration Details
     address public admin;
@@ -12,12 +13,12 @@ contract StknICO {
     IERC20 public token;
 
     //ICO Details
-    uint public tokenPrice = 0.001 ether;
-    uint public hardCap = 1 ether;
-    uint public softCap = 0.1 ether;
+    uint256 public tokenPrice = 0.000001 ether;
+    uint256 public hardCap = 0.001 ether;
+    uint256 public softCap = 0.0001 ether;
     uint public raisedAmount;
-    uint public minInvestment = 0.01 ether;
-    uint public maxInvestment = 0.05 ether;
+    uint256 public minInvestment = 0.00001 ether;
+    uint256 public maxInvestment = 0.00005 ether;
     uint public icoStartTime;
     uint public icoEndTime;
 
@@ -86,7 +87,7 @@ contract StknICO {
         require(ICOState == State.BEFORE, "ICO isn't in before state");
 
         icoStartTime = block.timestamp;
-        icoEndTime = icoStartTime + (86400 * 365);
+        icoEndTime = icoStartTime + 24 * 60 * 60;
         ICOState = State.RUNNING;
     }
 
@@ -104,9 +105,10 @@ contract StknICO {
     
     //Invest
     function invest() public payable returns (bool) {
+        uint256 x = msg.value;
         require(ICOState == State.RUNNING, "ICO isn't running");
         require(
-            msg.value >= minInvestment && msg.value <= maxInvestment,
+            x >= minInvestment && x <= maxInvestment,
             "Check Min and Max Investment"
         );
         require(
@@ -157,11 +159,13 @@ contract StknICO {
         );
         if (block.timestamp > icoEndTime && raisedAmount < softCap){
             ICOState = State.Fail;
+            emit End("Fail");
         }
         else {
             ICOState = State.Success;
+            emit End("Success");
         }
-        emit End(ICOState);
+
     }
 
     //Check ICO Contract Token Balance

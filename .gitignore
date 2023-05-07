@@ -24,3 +24,5 @@
 # production
 /client/build
 
+/client/.idea
+/.idea
