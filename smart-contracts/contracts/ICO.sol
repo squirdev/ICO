@@ -12,11 +12,12 @@ contract StknICO {
     IERC20 public token;
 
     //ICO Details
-    uint public tokenPrice = 0.0001 ether;
-    uint public hardCap = 500 ether;
+    uint public tokenPrice = 0.001 ether;
+    uint public hardCap = 1 ether;
+    uint public softCap = 0.1 ether;
     uint public raisedAmount;
-    uint public minInvestment = 0.001 ether;
-    uint public maxInvestment = 3 ether;
+    uint public minInvestment = 0.01 ether;
+    uint public maxInvestment = 0.05 ether;
     uint public icoStartTime;
     uint public icoEndTime;
 
@@ -27,8 +28,8 @@ contract StknICO {
     enum State {
         BEFORE,
         RUNNING,
-        END,
-        HALTED
+        Fail,
+        Success
     }
     State public ICOState;
 
@@ -39,15 +40,15 @@ contract StknICO {
         uint value,
         uint tokens
     );
-    event TokenBurn(address to, uint amount, uint time);
-
+    event Withdrawl(address from, address to, uint value);
+    event Claim(address from, address to, uint value);
+    event End(string ICOresult);
     //Initialize Variables
     constructor(address payable _icoWallet, address _token) {
         admin = msg.sender;
         ICOWallet = _icoWallet;
         token = IERC20(_token);
     }
-
     //Access Control
     modifier onlyAdmin() {
         require(msg.sender == admin, "Admin Only function");
@@ -71,10 +72,10 @@ contract StknICO {
             return "Not Started";
         } else if (ICOState == State.RUNNING) {
             return "Running";
-        } else if (ICOState == State.END) {
-            return "End";
+        } else if (ICOState == State.Fail) {
+            return "Fail";
         } else {
-            return "Halted";
+            return "Success";
         }
     }
 
@@ -89,25 +90,15 @@ contract StknICO {
         ICOState = State.RUNNING;
     }
 
-    function haltICO() external onlyAdmin {
-        require(ICOState == State.RUNNING, "ICO isn't running yet");
-        ICOState = State.HALTED;
-    }
+    // //Change ICO Wallet
+    // function changeICOWallet(address payable _newICOWallet) external onlyAdmin {
+    //     ICOWallet = _newICOWallet;
+    // }
 
-    function resumeICO() external onlyAdmin {
-        require(ICOState == State.HALTED, "ICO State isn't halted yet");
-        ICOState = State.RUNNING;
-    }
-
-    //Change ICO Wallet
-    function changeICOWallet(address payable _newICOWallet) external onlyAdmin {
-        ICOWallet = _newICOWallet;
-    }
-
-    //Change Admin
-    function changeAdmin(address _newAdmin) external onlyAdmin {
-        admin = _newAdmin;
-    }
+    // //Change Admin
+    // function changeAdmin(address _newAdmin) external onlyAdmin {
+    //     admin = _newAdmin;
+    // }
 
     /* User Function */
     
@@ -118,11 +109,6 @@ contract StknICO {
             msg.value >= minInvestment && msg.value <= maxInvestment,
             "Check Min and Max Investment"
         );
-        require(
-            investedAmountOf[msg.sender] + msg.value <= maxInvestment,
-            "Investor reached maximum Investment Amount"
-        );
-
         require(
             raisedAmount + msg.value <= hardCap,
             "Send within hardcap range"
@@ -139,25 +125,29 @@ contract StknICO {
         require(transferSuccess, "Failed to Invest");
 
         uint tokens = (msg.value / tokenPrice) * 1e18;
-        bool saleSuccess = token.transfer(msg.sender, tokens);
-        require(saleSuccess, "Failed to Invest");
-
         emit Invest(address(this), msg.sender, msg.value, tokens);
         return true;
     }
 
     //Burn Tokens
-    function burn() external returns (bool) {
-        require(ICOState == State.END, "ICO isn't over yet");
-
-        uint remainingTokens = token.balanceOf(address(this));
-        bool success = token.transfer(address(0), remainingTokens);
-        require(success, "Failed to burn remaining tokens");
-
-        emit TokenBurn(address(0), remainingTokens, block.timestamp);
+    function withdrawl() external returns (bool) {
+        require(ICOState == State.Fail, "ICO isn't failed");
+        uint amountToSend = investedAmountOf[msg.sender];
+        investedAmountOf[msg.sender] = 0;
+        payable(msg.sender).transfer(amountToSend);
+        emit Withdrawl(address(this), msg.sender, amountToSend );
         return true;
     }
-
+    function claim() external returns (bool) {
+        require(ICOState == State.Success, "ICO isn't successed");
+        uint amountToSend = investedAmountOf[msg.sender];
+        investedAmountOf[msg.sender] = 0;
+        uint tokens = (amountToSend / tokenPrice) * 1e18;
+        bool saleSuccess = token.transfer(msg.sender, tokens);
+        require(saleSuccess, "Failed to Invest");
+        emit Claim(address(this), msg.sender, tokens );
+        return true;
+    }
     //End ICO After reaching Hardcap or ICO Timelimit
     function endIco() public {
         require(ICOState == State.RUNNING, "ICO Should be in Running State");
@@ -165,7 +155,13 @@ contract StknICO {
             block.timestamp > icoEndTime || raisedAmount >= hardCap,
             "ICO Hardcap or timelimit not reached"
         );
-        ICOState = State.END;
+        if (block.timestamp > icoEndTime && raisedAmount < softCap){
+            ICOState = State.Fail;
+        }
+        else {
+            ICOState = State.Success;
+        }
+        emit End(ICOState);
     }
 
     //Check ICO Contract Token Balance
